@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <ctime>
 #include <cstdlib>
+#include <fstream>
 
 struct PCB
 {
@@ -28,6 +29,7 @@ struct Clock
 
 const int SH_KEY = 74821;
 const int MAX_PROCESSES = 20;
+std::string logFile = "logfile";
 
 PCB pcb_table[MAX_PROCESSES];
 
@@ -107,7 +109,7 @@ int main(int argc, char* argv[])
     int timeLimNano = 999999999;
     int intervalMs = 100;
 
-    while((opt = getopt(argc, argv, ":hn:s:t:i:")) != -1) //set optional args
+    while((opt = getopt(argc, argv, ":hn:s:t:i:f:")) != -1) //set optional args
         {
             switch(opt)
             {
@@ -120,6 +122,7 @@ int main(int argc, char* argv[])
                     std::cout << "-s: set number of simultaneous children\n" ;
                     std::cout << "-t: set time limit for children in seconds\n" ;
                     std::cout << "-i: set interval in ms between launching children\n" ;
+		    std::cout << "-f: choose file for oss output\n" ;
                     std::cout << "**********************\n" ;
                     std::cout << "Example invocation: \n" ;
                     std::cout << "./oss -n 5 -s 3 -t 7 -i 100\n" ;
@@ -139,6 +142,9 @@ int main(int argc, char* argv[])
                 case 'i':
                     intervalMs = atoi(optarg);
                     break;
+		case 'f':
+		    logFile = optarg;
+		    break;
                 default:
                     std::cerr << "Please choose an option!\n" ;
                     std::cout << "Example invocation: \n" ;
