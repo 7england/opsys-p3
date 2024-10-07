@@ -14,6 +14,13 @@ struct Clock
     int nanoseconds;
 };
 
+struct Message
+{
+    long msgtype; //type of msg
+    pid_t pid;
+    int x; //1 continue 0 terminate
+}
+
 const int SH_KEY = 74821;
 
 int main(int argc, char *argv[])

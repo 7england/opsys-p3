@@ -12,6 +12,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <fstream>
+#include <sys/msg.h>
 
 struct PCB
 {
@@ -27,7 +28,16 @@ struct Clock
     int nanoseconds;
 };
 
+//https://stackoverflow.com/questions/41988823/is-this-how-message-queues-are-supposed-to-work
+struct Message
+{
+    long msgtype; //type of msg
+    pid_t pid;
+    int x; //1 continue 0 terminate
+};
+
 const int SH_KEY = 74821;
+const int billion = 1000000000;
 const int MAX_PROCESSES = 20;
 std::string logFile = "logfile";
 
@@ -58,12 +68,58 @@ void increment_clock(Clock *shared_clock)
 {
     shared_clock -> nanoseconds += 250;
     //increment seconds if nanoseconds = second
-    if (shared_clock -> nanoseconds >= 1000000000)
+    if (shared_clock -> nanoseconds >= billion)
     {
-        shared_clock -> nanoseconds -= 1000000000;
+        shared_clock -> nanoseconds -= billion;
         shared_clock -> seconds++;
     }
 }
+
+void send_message(int msgid, //childPID, int action)
+{
+    Message msg;
+    msg.mtype = 1;
+    //send to child based on pid
+    msg.x = action;
+
+    if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
+    {
+        std::cerr << "Error: msgnd failed." << std::endl;
+    }
+    else
+    {
+        //output to log
+    }
+}
+
+Message receive_message(int msgid)
+{
+    Message msg;
+    if (msgrcv(msgid, &msg, sizeof(msg) - sizeof(long), 0, 0) ==-1)
+    {
+        std::cerr << "Error: msgrcv failed." << std::endl;
+    }
+    else
+    {
+        //output to log
+    }
+    return msg;
+}
+
+void output_to_log(const std::string &message)
+{
+    std::ofstream logFile(logFile, std::ios::app);
+    if (logFile.is_open())
+    {
+        logFile << message << std::endl;
+        logFile.close();
+    }
+    else
+    {
+        std::cerr << "Error: unable to open file." << std::endl;
+    }
+}
+
 
 void print_process_table(PCB pcb_table[], Clock* shared_clock)
 {
@@ -199,7 +255,7 @@ int main(int argc, char* argv[])
     {
         increment_clock(shared_clock);
 
-        long long currentTime = static_cast<long long>(shared_clock->seconds) * 1000000000 + shared_clock->nanoseconds;
+        long long currentTime = static_cast<long long>(shared_clock->seconds) * billion + shared_clock->nanoseconds;
 
         //check for terminated processes
         int status;
@@ -278,10 +334,10 @@ int main(int argc, char* argv[])
             //update next launch time
             nextLaunchTimeSec = shared_clock->seconds + launchIntervalSeconds;
             nextLaunchTimeNs = shared_clock->nanoseconds + launchIntervalNs;
-            if (nextLaunchTimeNs >= 1000000000)
+            if (nextLaunchTimeNs >= billion)
             {
                 nextLaunchTimeSec++;
-                nextLaunchTimeNs -= 1000000000;
+                nextLaunchTimeNs -= billion;
             }
         }
         if (launchedChildren >= numChildren && activeChildren == 0)
