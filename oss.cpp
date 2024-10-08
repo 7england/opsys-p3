@@ -14,6 +14,8 @@
 #include <fstream>
 #include <sys/msg.h>
 
+#define PERMS 0644
+
 struct PCB
 {
     int occupied; // either true or false
@@ -32,11 +34,11 @@ struct Clock
 struct Message
 {
     long msgtype; //type of msg
-    pid_t pid;
-    int x; //1 continue 0 terminate
+    pid_t pid; //pid of sender
 };
 
 const int SH_KEY = 74821;
+const int MSG_KEY = 49174;
 const int billion = 1000000000;
 const int MAX_PROCESSES = 20;
 std::string logFile = "logfile";
@@ -61,6 +63,8 @@ void signal_handler(int sig)
     {
         shmctl(shmid, IPC_RMID, nullptr);
     }
+
+    msgctl(MSG_KEY, IPC_RMID, nullptr);
     exit(1);
 }
 
@@ -75,44 +79,12 @@ void increment_clock(Clock *shared_clock)
     }
 }
 
-void send_message(int msgid, //childPID, int action)
-{
-    Message msg;
-    msg.mtype = 1;
-    //send to child based on pid
-    msg.x = action;
-
-    if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
-    {
-        std::cerr << "Error: msgnd failed." << std::endl;
-    }
-    else
-    {
-        //output to log
-    }
-}
-
-Message receive_message(int msgid)
-{
-    Message msg;
-    if (msgrcv(msgid, &msg, sizeof(msg) - sizeof(long), 0, 0) ==-1)
-    {
-        std::cerr << "Error: msgrcv failed." << std::endl;
-    }
-    else
-    {
-        //output to log
-    }
-    return msg;
-}
-
 void output_to_log(const std::string &message)
 {
-    std::ofstream logFile(logFile, std::ios::app);
-    if (logFile.is_open())
+    std::ofstream logFileStream(logFile, std::ios::app);
+    if (logFileStream)
     {
-        logFile << message << std::endl;
-        logFile.close();
+        logFileStream << message << std::endl;
     }
     else
     {
@@ -120,6 +92,42 @@ void output_to_log(const std::string &message)
     }
 }
 
+void send_message(int msgid, pid_t pid, Clock *shared_clock)
+{
+    Message msg;
+    msg.msgtype = 1;
+    msg.pid = pid;
+
+    if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
+    {
+        std::cerr << "Error: msgnd failed." << std::endl;
+    }
+    //output to log
+    std::string log_message = "OSS: Sending message to worker " + std::to_string(msg.pid) +
+    " at time " + std::to_string(shared_clock -> seconds) + ":" +
+    std::to_string(shared_clock -> nanoseconds);
+
+    std::cout << log_message << std::endl;
+    output_to_log(log_message);
+}
+
+Message receive_message(int msgid, Clock *shared_clock)
+{
+    Message msg;
+    if (msgrcv(msgid, &msg, sizeof(msg) - sizeof(long), 0, 0) ==-1)
+    {
+        std::cerr << "Error: msgrcv failed." << std::endl;
+    }
+    //output to log
+    std::string log_message = "OSS: Receiving message from worker " + std::to_string(msg.pid) +
+    " at time " + std::to_string(shared_clock -> seconds) + ":" +
+    std::to_string(shared_clock -> nanoseconds);
+
+    std::cout << log_message << std::endl;
+    output_to_log(log_message);
+
+    return msg;
+}
 
 void print_process_table(PCB pcb_table[], Clock* shared_clock)
 {
@@ -224,7 +232,7 @@ int main(int argc, char* argv[])
     long long launchIntervalNs = (intervalMs / 1000) * 1000000;
 
     //create shared mem: 0644 r/w to owner
-    int shmid = shmget(SH_KEY, sizeof(Clock), 0644 | IPC_CREAT);
+    int shmid = shmget(SH_KEY, sizeof(Clock), PERMS | IPC_CREAT);
     if (shmid == -1)
     {
         std::cerr << "Error: Shared memory get failed" << std::endl;
@@ -242,6 +250,14 @@ int main(int argc, char* argv[])
     //set clock nano/seconds to 0
     shared_clock -> seconds = 0;
     shared_clock -> nanoseconds = 0;
+
+    // create our message queue with 0644 perms
+    int msgid;
+    if ((msgid = msgget(MSG_KEY, PERMS | IPC_CREAT)) == -1)
+    {
+        std::cerr << "Error: msgget in parent" << std::endl;
+        exit(1);
+    }
 
     //for loops
     int activeChildren = 0;
@@ -276,6 +292,11 @@ int main(int argc, char* argv[])
                     break;
                 }
             }
+        }
+
+        if (msgid != -1)
+        {
+            Message msg = receive_message(msgid, shared_clock);
         }
 
         if (currentTime - lastPrintTime >= 500000000)
@@ -326,6 +347,8 @@ int main(int argc, char* argv[])
                         pcb_table[i].startNano = shared_clock -> nanoseconds;
                         activeChildren++;
                         launchedChildren++;
+
+                        send_message(msgid, new_pid, shared_clock);
 
                         break;
                     }
