@@ -303,9 +303,16 @@ int main(int argc, char* argv[])
             }
         }
 
-        if (msgid != -1)
+        for (int i = 0; i < MAX_PROCESSES; i++)
         {
-            Message msg = receive_message(msgid, shared_clock);
+            if (pcb_table[i].occupied)
+            {
+                int nextChild = pcb_table[i].pid;
+
+                send_message(msgid, nextChild, shared_clock);
+
+                Message recvMsg = receive_message(msgid, shared_clock);
+            }
         }
 
         if (currentTime - lastPrintTime >= 500000000)
@@ -313,7 +320,6 @@ int main(int argc, char* argv[])
             print_process_table(pcb_table, shared_clock);
             lastPrintTime = currentTime;
         }
-        //launch new children under simultaneous limit
         //launch new children if under simultaneous limit
         if (activeChildren < numSim && launchedChildren < numChildren &&
         (shared_clock->seconds > nextLaunchTimeSec ||
@@ -357,8 +363,6 @@ int main(int argc, char* argv[])
                         activeChildren++;
                         launchedChildren++;
 
-                        send_message(msgid, new_pid, shared_clock);
-
                         break;
                     }
                 }
@@ -380,5 +384,7 @@ int main(int argc, char* argv[])
 
     shmdt(shared_clock);
     shmctl(shmid, IPC_RMID, nullptr);
+    msgctl(msgid, IPC_RMID, nullptr);
+
     return 0;
 }
