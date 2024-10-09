@@ -14,7 +14,16 @@
 #include <fstream>
 #include <sys/msg.h>
 
-#define PERMS 0644
+//https://forum.arduino.cc/t/when-to-use-const-int-int-or-define/668071
+const int PERMS 0644
+const int SH_KEY = 74821;
+const int MSG_KEY = 49174;
+const int BILLION = 1000000000;
+const int MAX_PROCESSES = 20;
+
+std::string logFile = "logfile";
+
+PCB pcb_table[MAX_PROCESSES];
 
 struct PCB
 {
@@ -35,15 +44,8 @@ struct Message
 {
     long msgtype; //type of msg
     pid_t pid; //pid of sender
+    int action; //0 for terminate 1 for run
 };
-
-const int SH_KEY = 74821;
-const int MSG_KEY = 49174;
-const int billion = 1000000000;
-const int MAX_PROCESSES = 20;
-std::string logFile = "logfile";
-
-PCB pcb_table[MAX_PROCESSES];
 
 void signal_handler(int sig)
 {
@@ -68,13 +70,21 @@ void signal_handler(int sig)
     exit(1);
 }
 
-void increment_clock(Clock *shared_clock)
+void increment_clock(Clock *shared_clock, int activeChildren)
 {
-    shared_clock -> nanoseconds += 250;
-    //increment seconds if nanoseconds = second
-    if (shared_clock -> nanoseconds >= billion)
+    if (activeChildren > 0)
     {
-        shared_clock -> nanoseconds -= billion;
+        shared_clock -> nanoseconds += 250000000 / activeChildren;
+    }
+    else
+    {
+        shared_clock -> nanoseconds += 250000000;
+    }
+
+    //increment seconds if nanoseconds = second
+    if (shared_clock -> nanoseconds >= BILLION)
+    {
+        shared_clock -> nanoseconds -= BILLION;
         shared_clock -> seconds++;
     }
 }
@@ -170,7 +180,6 @@ int main(int argc, char* argv[])
     int numChildren = 1;
     int numSim = 1;
     int timeLimSec = 1;
-    int timeLimNano = 999999999;
     int intervalMs = 100;
 
     while((opt = getopt(argc, argv, ":hn:s:t:i:f:")) != -1) //set optional args
@@ -269,9 +278,9 @@ int main(int argc, char* argv[])
 
     while (true)
     {
-        increment_clock(shared_clock);
+        increment_clock(shared_clock, activeChildren);
 
-        long long currentTime = static_cast<long long>(shared_clock->seconds) * billion + shared_clock->nanoseconds;
+        long long currentTime = static_cast<long long>(shared_clock->seconds) * BILLION + shared_clock->nanoseconds;
 
         //check for terminated processes
         int status;
@@ -329,7 +338,7 @@ int main(int argc, char* argv[])
 
                         //assign random value between 1 and input
                         int randomSec = rand() % timeLimSec + 1;
-                        int randomNano = rand() % timeLimNano;
+                        int randomNano = rand() % BILLION;
 
                         std::string randomSecStr = std::to_string(randomSec);
                         std::string randomNanoStr = std::to_string(randomNano);
@@ -357,10 +366,10 @@ int main(int argc, char* argv[])
             //update next launch time
             nextLaunchTimeSec = shared_clock->seconds + launchIntervalSeconds;
             nextLaunchTimeNs = shared_clock->nanoseconds + launchIntervalNs;
-            if (nextLaunchTimeNs >= billion)
+            if (nextLaunchTimeNs >= BILLION)
             {
                 nextLaunchTimeSec++;
-                nextLaunchTimeNs -= billion;
+                nextLaunchTimeNs -= BILLION;
             }
         }
         if (launchedChildren >= numChildren && activeChildren == 0)
