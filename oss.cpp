@@ -15,15 +15,13 @@
 #include <sys/msg.h>
 
 //https://forum.arduino.cc/t/when-to-use-const-int-int-or-define/668071
-const int PERMS 0644
+const int PERMS = 0644;
 const int SH_KEY = 74821;
 const int MSG_KEY = 49174;
 const int BILLION = 1000000000;
 const int MAX_PROCESSES = 20;
 
 std::string logFile = "logfile";
-
-PCB pcb_table[MAX_PROCESSES];
 
 struct PCB
 {
@@ -32,6 +30,8 @@ struct PCB
     int startSeconds; // time when it was forked
     int startNano; // time when it was forked
 };
+
+PCB pcb_table[MAX_PROCESSES];
 
 struct Clock
 {
