@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
     do
     {
         //message rcv from oss
-        if (msgrcv(msgid, &msg, sizeof(msg) - sizeof(long), getpid(), 0) == -1)
+        if (msgrcv(msgid, &msg, sizeof(msg) - sizeof(long), 1, 0) == -1)
         {
             std::cerr << "Worker: Error: msgrcv failed" << std::endl;
             return 1;
@@ -87,15 +87,15 @@ int main(int argc, char *argv[])
 
         //check if we're out of time (reversed from other project to break if opp true
         if (shared_clock -> seconds > termSec ||
-        (shared_clock -> seconds == termSec && shared_clock -> nanoseconds >= termNsec))
+        (shared_clock -> seconds >= termSec && shared_clock -> nanoseconds >= termNsec))
         {
             //print info again
             std::cout << "\n\nWorker PID: " << getpid() << " PPID: " << getppid() <<
             " SysClockS: " << shared_clock -> seconds <<  " SysClockNano: " << shared_clock -> nanoseconds <<
             " TermTimeS: " << termSec << " TermTimeNano: " << termNsec << std::endl;
-            std::cout << "Terminating after sending message back to oss after" << iterationCount << " iteration(s) has/have passed" << std::endl;
+            std::cout << "Terminating after sending message back to oss after " << iterationCount << " iteration(s) has/have passed" << std::endl;
 
-            msg.msgtype = 1;
+            msg.msgtype = 4;
             msg.pid = getpid();
             msg.action = 0;
             if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) ==-1)
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
             std::cout << "--" << iterationCount << " iteration(s) has/have passed since starting" << std::endl;
 
 
-            msg.msgtype = 1;
+            msg.msgtype = 4;
             msg.pid = getpid();
             msg.action = 1;
 
