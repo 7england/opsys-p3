@@ -15,7 +15,7 @@
 #include <sys/msg.h>
 
 //https://forum.arduino.cc/t/when-to-use-const-int-int-or-define/668071
-const int PERMS = 0666;
+const int PERMS = 0644;
 const int SH_KEY = 74821;
 const int MSG_KEY = 49174;
 const int BILLION = 1000000000;
@@ -192,6 +192,11 @@ bool stillChildrenRunning(int activeChildren)
     return activeChildren > 0;
 }
 
+bool timePassed(long long sec1, long long nano1, long long sec2, long long nano2)
+{
+    return sec1 > sec2 || (sec1 == sec2 && nano1 >= nano2);
+}
+
 int main(int argc, char* argv[])
 {
     //set up alarm
@@ -291,21 +296,30 @@ int main(int argc, char* argv[])
     pid_t lastChildMessaged = -1;
     long long nextLaunchTimeSec = 0;
     long long nextLaunchTimeNs = 0;
+    long long nextPrintTimeSec = 0;
+    long long nextPrintTimeNs = 500000;
 
     while (stillChildrenToLaunch(launchedChildren, numChildren) || stillChildrenRunning(activeChildren))
     {
         increment_clock(shared_clock, activeChildren);
 
         //if 50 ms passed print pcb
-        if (shared_clock -> seconds > nextLaunchTimeSec || (shared_clock -> seconds == nextLaunchTimeSec && shared_clock -> nanoseconds >= nextLaunchTimeNs))
+        if (timePassed(shared_clock->seconds, shared_clock->nanoseconds, nextPrintTimeSec, nextPrintTimeNs))
         {
             print_process_table(pcb_table, shared_clock);
-            nextLaunchTimeSec = shared_clock -> seconds;
-            nextLaunchTimeNs = shared_clock -> nanoseconds + intervalMs * 1000000;
+            nextPrintTimeSec = shared_clock->seconds;
+            nextPrintTimeNs = shared_clock->nanoseconds + 500000;
+
+            if (nextPrintTimeNs >= BILLION)
+            {
+                nextPrintTimeNs -= BILLION;
+                nextPrintTimeSec++;
+            }
         }
 
         //check next child to send a message to using func
         pid_t nextChild = calculateNextChildToSendAMessageTo(lastChildMessaged);
+        //std::cout << "Next child to send a message to: " << nextChild << std::endl;
 
         if (nextChild != -1)
         {
@@ -315,7 +329,7 @@ int main(int argc, char* argv[])
             msg.pid = getpid(); //parent pid
             msg.action = 1; //running, but doesn't really matter
 
-            //send message of type nextChild pid for child to receive
+            //send message of type nextChild pid for child to receive, visible with ipcs
             if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
             {
                 std::cerr << "Error: msgsnd failed" << std::endl;
@@ -327,6 +341,7 @@ int main(int argc, char* argv[])
                 std::string logMessage = "Message sent to child " + std::to_string(nextChild) + " at time " +
                     std::to_string(shared_clock->seconds) + "." + std::to_string(shared_clock->nanoseconds) + ".";
                 output_to_log(logMessage);
+                //std::cout << "Sent" << std::endl;
             }
 
             lastChildMessaged = nextChild;  //update last messaged child
@@ -358,7 +373,9 @@ int main(int argc, char* argv[])
             }
         }
 
-        if (activeChildren < numSim && launchedChildren < numChildren)
+        if (activeChildren < numSim && launchedChildren < numChildren &&
+            (shared_clock->seconds > nextLaunchTimeSec) ||
+            (shared_clock->seconds == nextLaunchTimeSec && shared_clock->nanoseconds >= nextLaunchTimeNs))
         {
             for (int i = 0; i < numSim; i++)
             {
@@ -402,7 +419,8 @@ int main(int argc, char* argv[])
     }
     //clean up
     shmdt(shared_clock);
-//
+    shmctl(shmid, IPC_RMID, nullptr);
+    shmctl(msgid, IPC_RMID, nullptr);
 
     return 0;
 }

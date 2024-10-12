@@ -11,7 +11,7 @@
 
 const int SH_KEY = 74821;
 const int MSG_KEY = 49174;
-const int PERMS = 0666;
+const int PERMS = 0644;
 const int BILLION = 1000000000;
 
 struct Clock
@@ -74,8 +74,9 @@ int main(int argc, char *argv[])
     " TermTimeS: " << termSec << " TermTimeNano: " << termNsec <<
     "\n Starting.......\n\n" << std::endl;
 
+    //message struct to receive messages
     Message rcvMsg;
-    int iterationCount = 0;
+    int iterationCount = 0; //count of iterations
 
     //do while loop from proj specs
     do
@@ -83,7 +84,9 @@ int main(int argc, char *argv[])
         //message rcv from oss
         //std::cout << "worker " << getpid() << " waiting on message from oss " << getppid() << std::endl;
 
+        //get pid of worker
         pid_t pid = getpid();
+        //receive message from oss with pid as msgtype
         if (msgrcv(msgid, &rcvMsg, sizeof(rcvMsg) - sizeof(long), pid, 0) == -1) //stuck on this line! <-----
         /*
             ^^^^I tried changing msgtype to be 3 (random int) in both oss msgsnd and worker msgrcv, but it still gets stuck here
