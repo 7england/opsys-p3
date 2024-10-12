@@ -11,7 +11,7 @@
 
 const int SH_KEY = 74821;
 const int MSG_KEY = 49174;
-const int PERMS = 0644;
+const int PERMS = 0666;
 const int BILLION = 1000000000;
 
 struct Clock
@@ -55,6 +55,10 @@ int main(int argc, char *argv[])
         std::cerr << "Error: msgget in worker" << std::endl;
         exit(1);
     }
+    else
+    {
+        //std::cout << "Worker: " << getpid() << " msgget successful" << std::endl;
+    }
 
     int termSec = shared_clock -> seconds + maxSec;
     int termNsec = shared_clock -> nanoseconds + maxNsec;
@@ -77,17 +81,22 @@ int main(int argc, char *argv[])
     do
     {
         //message rcv from oss
-        std::cout << "worker " << getpid() << " waiting on message from oss " << getppid() << std::endl;
+        //std::cout << "worker " << getpid() << " waiting on message from oss " << getppid() << std::endl;
 
         pid_t pid = getpid();
-        if (msgrcv(msgid, &rcvMsg, sizeof(rcvMsg) - sizeof(long), pid, 0) == -1) //stuck on this line!
+        if (msgrcv(msgid, &rcvMsg, sizeof(rcvMsg) - sizeof(long), pid, 0) == -1) //stuck on this line! <-----
+        /*
+            ^^^^I tried changing msgtype to be 3 (random int) in both oss msgsnd and worker msgrcv, but it still gets stuck here
+            when i use IPC_NOWAIT, it skips the first iteration and then works, but IPC_NOWAIT makes it
+            nonblocking and not useful for this project. I'm not sure why it gets stuck here.
+        */
         {
             std::cerr << "Worker: Error: msgrcv failed" << std::endl;
             return 1;
         }
         else
         {
-            std::cout << "Worker: " << getpid() << " received message from oss" << std::endl;
+            //std::cout << "Worker: " << getpid() << " received message from oss" << std::endl;
         }
 
         //increment iteration count
@@ -97,7 +106,7 @@ int main(int argc, char *argv[])
         //always send a message back to the parent process after receiving a message
         msg.msgtype = getppid(); //pid of receiver
         msg.pid = getpid(); //pid of worker
-        msg.action = 1;
+        msg.action = 1; //run
 
         if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
         {
@@ -106,7 +115,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            std::cout << "Worker: " << getpid() << " sent message back to oss" << std::endl;
+            //std::cout << "Worker: " << getpid() << " sent message back to oss" << std::endl;
         }
 
         //check if we're out of time (reversed from other project to break if opp true
@@ -122,7 +131,7 @@ int main(int argc, char *argv[])
             //send message back to oss
             msg.msgtype = getppid();
             msg.pid = getpid();
-            msg.action = 0;
+            msg.action = 0; //terminate
             if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) ==-1)
             {
                 std::cerr << "Worker: Error: msgsnd failed" << std::endl;
@@ -140,11 +149,15 @@ int main(int argc, char *argv[])
 
     } while (true);
 
+    //clean up
     if (shmdt(shared_clock) == -1)
     {
         std::cerr << "Worker: error: shmdt" << std::endl;
         return 1;
     }
+
+    shmctl (shmid, IPC_RMID, 0);
+    msgctl (msgid, IPC_RMID, 0);
 
     return 0;
 }

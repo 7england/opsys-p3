@@ -15,7 +15,7 @@
 #include <sys/msg.h>
 
 //https://forum.arduino.cc/t/when-to-use-const-int-int-or-define/668071
-const int PERMS = 0644;
+const int PERMS = 0666;
 const int SH_KEY = 74821;
 const int MSG_KEY = 49174;
 const int BILLION = 1000000000;
@@ -180,15 +180,15 @@ pid_t calculateNextChildToSendAMessageTo(pid_t lastChildMessaged)
 
 bool stillChildrenToLaunch(int launchedChildren, int numChildren)
 {
-    std::cout << "Launched children: " << launchedChildren << std::endl;
+    /*std::cout << "Launched children: " << launchedChildren << std::endl;
     std::cout << "Num children: " << numChildren << std::endl;
-    std::cout << "Still children to launch: " << (launchedChildren < numChildren) << std::endl;
+    std::cout << "Still children to launch: " << (launchedChildren < numChildren) << std::endl;*/
     return launchedChildren < numChildren;
 }
 
 bool stillChildrenRunning(int activeChildren)
 {
-    std::cout << "Active children: " << activeChildren << std::endl;
+    /*std::cout << "Active children: " << activeChildren << std::endl;*/
     return activeChildren > 0;
 }
 
@@ -294,8 +294,6 @@ int main(int argc, char* argv[])
 
     while (stillChildrenToLaunch(launchedChildren, numChildren) || stillChildrenRunning(activeChildren))
     {
-        std::cout << "In main loop" << std::endl;
-
         increment_clock(shared_clock, activeChildren);
 
         //if 50 ms passed print pcb
@@ -306,18 +304,18 @@ int main(int argc, char* argv[])
             nextLaunchTimeNs = shared_clock -> nanoseconds + intervalMs * 1000000;
         }
 
+        //check next child to send a message to using func
         pid_t nextChild = calculateNextChildToSendAMessageTo(lastChildMessaged);
-        std::cout << "Next child to message: " << nextChild << std::endl;
 
         if (nextChild != -1)
         {
-            std::cout << "Sending message to child" << std::endl;
             //send msg to child to run
             Message msg;
             msg.msgtype = nextChild; //child pid
-            msg.pid = getpid();
+            msg.pid = getpid(); //parent pid
             msg.action = 1; //running, but doesn't really matter
 
+            //send message of type nextChild pid for child to receive
             if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
             {
                 std::cerr << "Error: msgsnd failed" << std::endl;
@@ -325,19 +323,21 @@ int main(int argc, char* argv[])
             }
             else
             {
+                //this works!
                 std::string logMessage = "Message sent to child " + std::to_string(nextChild) + " at time " +
                     std::to_string(shared_clock->seconds) + "." + std::to_string(shared_clock->nanoseconds) + ".";
                 output_to_log(logMessage);
             }
 
-            lastChildMessaged = nextChild;  // update last messaged child
+            lastChildMessaged = nextChild;  //update last messaged child
 
             Message rcvMsg;
             if (msgrcv(msgid, &rcvMsg, sizeof(rcvMsg) - sizeof(long), getpid(), 0) != -1)
             {
-                  std::string logMessage = "Message received from child " + std::to_string(rcvMsg.pid) + " at time " +
-                  std::to_string(shared_clock->seconds) + "." + std::to_string(shared_clock->nanoseconds) + ".";
-                  output_to_log(logMessage);
+
+                std::string logMessage = "Message received from child " + std::to_string(rcvMsg.pid) + " at time " +
+                    std::to_string(shared_clock->seconds) + "." + std::to_string(shared_clock->nanoseconds) + ".";
+                output_to_log(logMessage);
 
                 //check if child will terminate
                 if (rcvMsg.action == 0)
@@ -360,24 +360,21 @@ int main(int argc, char* argv[])
 
         if (activeChildren < numSim && launchedChildren < numChildren)
         {
-            std::cout << "Launching new child" << std::endl;
-
             for (int i = 0; i < numSim; i++)
             {
-                std::cout << "For loop" << std::endl;
                 if (!pcb_table[i].occupied)
                 {
-                    std::cout << "PCB " << i << " is not occupied." << std::endl;
-                    std::cout << "Fork" << std::endl;
                     pid_t new_pid = fork();
 
                     if (new_pid < 0)
                     {
+                        //fork failed
                         std::cerr << "Error: fork issue." << std::endl;
                         exit(1);
                     }
                     else if (new_pid == 0)
                     {
+                        //child process
                         int randomSec = rand() % timeLimSec + 1;
                         int randomNano = rand() % BILLION;
 
@@ -390,7 +387,7 @@ int main(int argc, char* argv[])
                     }
                     else
                     {
-                        std::cout << "Parent" << std::endl;
+                        //parent process
                         pcb_table[i].occupied = 1;
                         pcb_table[i].pid = new_pid;
                         pcb_table[i].startSeconds = shared_clock -> seconds;
@@ -403,9 +400,9 @@ int main(int argc, char* argv[])
             }
         }
     }
-    std::cout << "All children have terminated." << std::endl;
+    //clean up
     shmdt(shared_clock);
-    shmctl (shmid, IPC_RMID, 0);
-    msgctl (msgid, IPC_RMID, 0);
+//
+
     return 0;
 }
