@@ -22,7 +22,7 @@ struct Clock
 
 struct Message
 {
-    long msgtype; //type of msg
+    pid_t msgtype; //type of msg
     pid_t pid; //pid of sender
     int action; //0 for terminate 1 for run
 };
@@ -49,8 +49,8 @@ int main(int argc, char *argv[])
     }
 
     //get our message queue with 0644 perms
-    int msgid;
-    if ((msgid = msgget(MSG_KEY, PERMS)) == -1)
+    int msgid = msgget(MSG_KEY, PERMS);
+    if (msgid == -1)
     {
         std::cerr << "Error: msgget in worker" << std::endl;
         exit(1);
@@ -70,20 +70,44 @@ int main(int argc, char *argv[])
     " TermTimeS: " << termSec << " TermTimeNano: " << termNsec <<
     "\n Starting.......\n\n" << std::endl;
 
-    Message msg;
+    Message rcvMsg;
     int iterationCount = 0;
 
     //do while loop from proj specs
     do
     {
         //message rcv from oss
-        if (msgrcv(msgid, &msg, sizeof(msg) - sizeof(long), 1, 0) == -1)
+        std::cout << "worker " << getpid() << " waiting on message from oss " << getppid() << std::endl;
+
+        pid_t pid = getpid();
+        if (msgrcv(msgid, &rcvMsg, sizeof(rcvMsg) - sizeof(long), pid, 0) == -1) //stuck on this line!
         {
             std::cerr << "Worker: Error: msgrcv failed" << std::endl;
             return 1;
         }
+        else
+        {
+            std::cout << "Worker: " << getpid() << " received message from oss" << std::endl;
+        }
 
+        //increment iteration count
         iterationCount++;
+
+        Message msg;
+        //always send a message back to the parent process after receiving a message
+        msg.msgtype = getppid(); //pid of receiver
+        msg.pid = getpid(); //pid of worker
+        msg.action = 1;
+
+        if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) == -1)
+        {
+            std::cerr << "Worker: Error: msgsnd failed" << std::endl;
+            return 1;
+        }
+        else
+        {
+            std::cout << "Worker: " << getpid() << " sent message back to oss" << std::endl;
+        }
 
         //check if we're out of time (reversed from other project to break if opp true
         if (shared_clock -> seconds > termSec ||
@@ -95,7 +119,8 @@ int main(int argc, char *argv[])
             " TermTimeS: " << termSec << " TermTimeNano: " << termNsec << std::endl;
             std::cout << "Terminating after sending message back to oss after " << iterationCount << " iteration(s) has/have passed" << std::endl;
 
-            msg.msgtype = 4;
+            //send message back to oss
+            msg.msgtype = getppid();
             msg.pid = getpid();
             msg.action = 0;
             if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) ==-1)
@@ -103,27 +128,15 @@ int main(int argc, char *argv[])
                 std::cerr << "Worker: Error: msgsnd failed" << std::endl;
                 return 1;
             }
+
             //determine if it is time to terminate
             break;
         }
-        else
-        {
-            std::cout << "\n\nWorker PID: " << getpid() << " PPID: " << getppid() <<
-            " SysClockS: " << shared_clock -> seconds <<  " SysClockNano: " << shared_clock -> nanoseconds <<
-            " TermTimeS: " << termSec << " TermTimeNano: " << termNsec << std::endl;
-            std::cout << "--" << iterationCount << " iteration(s) has/have passed since starting" << std::endl;
 
-
-            msg.msgtype = 4;
-            msg.pid = getpid();
-            msg.action = 1;
-
-            if (msgsnd(msgid, &msg, sizeof(msg) - sizeof(long), 0) ==-1)
-            {
-                std::cerr << "Worker: Error: msgsnd failed" << std::endl;
-                return 1;
-            }
-        }
+        std::cout << "\n\nWorker PID: " << getpid() << " PPID: " << getppid() <<
+        " SysClockS: " << shared_clock -> seconds <<  " SysClockNano: " << shared_clock -> nanoseconds <<
+        " TermTimeS: " << termSec << " TermTimeNano: " << termNsec << std::endl;
+        std::cout << "--" << iterationCount << " iteration(s) has/have passed since starting" << std::endl;
 
     } while (true);
 
